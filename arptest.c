@@ -25,10 +25,13 @@
 #define ARP_OPCODE_REQ 1
 #define ARP_OPCODE_REP 2
 
+#define MACLEN 6
+typedef unsigned char macaddr[MACLEN];
+
 
 
 static int arp_loop(const char *ifname);
-static int find_if(int socket, const char *name);
+static int find_if(int socket, const char *name, macaddr mac);
 static void print_arp(const char *data, int len);
 
 
@@ -60,7 +63,8 @@ static int arp_loop(const char *ifname)
   
 
   {
-    int ifindex = find_if(s, ifname);
+    macaddr ifmac = {0, 0, 0, 0, 0, 0};
+    int ifindex = find_if(s, ifname, ifmac);
     if(ifindex <= 0)
     {
       printf("Could not find interface %s\n", ifname);
@@ -80,8 +84,11 @@ static int arp_loop(const char *ifname)
       ret = 0;
       goto end;
     }
-  }
 
+    printf("Bound to %d %02x:%02x:%02x:%02x:%02x:%02x\n",
+            ifindex,
+            ifmac[0], ifmac[1], ifmac[2], ifmac[3], ifmac[4], ifmac[5]);
+  }
 
   unsigned int yes = 1;
   setsockopt(s, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
@@ -101,11 +108,11 @@ static int arp_loop(const char *ifname)
 
     if(r <= 0 || raddr_size < sizeof(struct sockaddr_ll) || raddr.sll_halen != 6)
     {
-      printf("recv error %d\n", errno);
+      printf("recv error %d %d\n", errno, r);
       break;
     }
 
-    printf("r %d %d %x:%x:%x:%x:%x:%x\n", r, raddr.sll_halen,
+    printf("r %d %d %02x:%02x:%02x:%02x:%02x:%02x\n", r, raddr.sll_halen,
             raddr.sll_addr[0],raddr.sll_addr[1],raddr.sll_addr[2],
             raddr.sll_addr[3],raddr.sll_addr[4],raddr.sll_addr[5]);
     
@@ -123,17 +130,29 @@ end:
 }
 
 
-static int find_if(int socket, const char *name)
+static int find_if(int socket, const char *name, macaddr mac)
 {
+  int ret = 0;
   struct ifreq ifs;
 
   memset(&ifs, 0, sizeof(ifs));
   strncpy(ifs.ifr_name, name, IFNAMSIZ-1);
 
   if(ioctl(socket, SIOCGIFINDEX, &ifs) == 0)
-    return ifs.ifr_ifindex;
+    ret = ifs.ifr_ifindex;
   
-  return 0;
+  if(ret && mac)
+  {
+    memset(&ifs, 0, sizeof(ifs));
+    strncpy(ifs.ifr_name, name, IFNAMSIZ-1);
+
+    if(ioctl(socket, SIOCGIFHWADDR, &ifs) == 0)
+      memcpy(mac, ifs.ifr_hwaddr.sa_data, MACLEN);
+    else
+      ret = 0;
+  }
+
+  return ret;
 }
 
 
