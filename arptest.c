@@ -60,7 +60,7 @@ struct arp_state {
 static int arp_loop(const char *ifname);
 static int find_if(int socket, const char *name, macaddr mac);
 static void print_arp(const char *data, int len);
-static void send_arp_req(struct arp_state state, ip4addr addr);
+static void send_arp_req(struct arp_state state, ip4addr src, ip4addr dest);
 
 
 int main(int argc, const char *argv[])
@@ -120,7 +120,7 @@ static int arp_loop(const char *ifname)
 
   ip4addr dest = 0;
   if(inet_pton(AF_INET, "172.25.25.10", &dest) == 1)
-    send_arp_req(state, dest);
+    send_arp_req(state, dest, dest);
 
   struct sockaddr_ll raddr;
   int raddr_size = 0;
@@ -210,7 +210,7 @@ invalid:
 }
 
 
-static void send_arp_req(struct arp_state state, ip4addr addr)
+static void send_arp_req(struct arp_state state, ip4addr src, ip4addr dest)
 {
   uint8_t data[ARP_PACKET_LEN];
 
@@ -218,10 +218,9 @@ static void send_arp_req(struct arp_state state, ip4addr addr)
   memcpy(data, ARP_HEADER, sizeof(ARP_HEADER));
   data[ARP_PACKET_OPCODE+1] = ARP_OPCODE_REQ;
 
-  // Source IP address stays 0
-
+  memcpy(&(data[ARP_PACKET_SRC_IP]), &src, 4);
   memcpy(&(data[ARP_PACKET_SRC_HW]), &state.ifmac, 6);
-  memcpy(&(data[ARP_PACKET_TGT_IP]), &addr, 4);
+  memcpy(&(data[ARP_PACKET_TGT_IP]), &dest, 4);
 
   struct sockaddr_ll to;
   memset(&to, 0, sizeof(to));
